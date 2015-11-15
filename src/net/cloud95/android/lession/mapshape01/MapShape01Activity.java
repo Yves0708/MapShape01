@@ -1,14 +1,27 @@
 package net.cloud95.android.lession.mapshape01;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.apache.http.util.ByteArrayBuffer;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 import android.app.ProgressDialog;
 import android.graphics.Color;
@@ -33,6 +46,7 @@ import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
+
 
 public class MapShape01Activity extends FragmentActivity {
 
@@ -198,13 +212,14 @@ public class MapShape01Activity extends FragmentActivity {
 		circle_seekbar.setOnSeekBarChangeListener(seekBarListener);
 	}
 
+	private List<LatLng> getpoints = new ArrayList<LatLng>();
 	private ProgressDialog LoadingProgress;
 
 	private class downloadBackgroundTaks extends
 			AsyncTask<String, Integer, String> {
 		boolean ifSuccess = true;
-		String tag[] = {"lat","lng"};
-		
+		String tag[] = { "lat", "lng" };
+
 		@Override
 		protected String doInBackground(String... urls) {
 			// TODO Auto-generated method stub
@@ -212,46 +227,176 @@ public class MapShape01Activity extends FragmentActivity {
 			String resultString = "";
 			URL submitURL = null;
 			ifError = 0;
-			
-			if(urls == null||urls.length!=1){
+
+			if (urls == null || urls.length != 1) {
 				ifError = 1;
 				ifSuccess = false;
 			}
-			if(ifError==0){
-				
-				try{
+			if (ifError == 0) {
+
+				try {
 					submitURL = new URL(urls[0]);
-				}catch(MalformedURLException e){
+				} catch (MalformedURLException e) {
 					ifSuccess = false;
 				}
 			}
-			
-			if(submitURL != null){
-				try{
-					HttpURLConnection urlConn = (HttpURLConnection)submitURL.openConnection();
-					InputStreamReader httpStream = new InputStreamReader(urlConn.getInputStream());
+
+			if (submitURL != null) {
+				try {
+					HttpURLConnection urlConn = (HttpURLConnection) submitURL
+							.openConnection();
+					InputStreamReader httpStream = new InputStreamReader(
+							urlConn.getInputStream());
 					BufferedReader httpBuffer = new BufferedReader(httpStream);
-					
+
 					String inputLine = null;
-					while((inputLine=httpBuffer.readLine())!=null){
-						resultString += inputLine+"\n";//加上換行
+					while ((inputLine = httpBuffer.readLine()) != null) {
+						resultString += inputLine + "\n";// 加上換行
 					}
 					httpStream.close();
 					urlConn.disconnect();
-				}catch(IOException e){
+				} catch (IOException e) {
 					ifSuccess = false;
 				}
 			}
-			return resultString; //傳給 onPostExecute
+			return resultString; // 傳給 onPostExecute
 		}
-		
-		protected void onPostExecute(String result){
-			
-			if(LoadingProgress.isShowing()==true){
+
+		protected void onPostExecute(String result) {
+
+			if (LoadingProgress.isShowing() == true) {
 				LoadingProgress.hide();
 				LoadingProgress.dismiss();
 			}
-			Log.e("Result", result);//把讀進來的資料呈現在LogCat
+			Log.e("Result", result);// 把讀進來的資料呈現在LogCat
+			// 將讀入文件剖析
+			if (ifSuccess) {
+				// 開立文件剖析工廠
+				DocumentBuilderFactory dbf = DocumentBuilderFactory
+						.newInstance();
+				DocumentBuilder db;// 工人
+
+				try {
+					// 從文件剖析工廠取得建立文件的工人
+					db = dbf.newDocumentBuilder();
+					ByteArrayInputStream thisStream = null;
+					// TODO自動產生的方法Stub
+					try {
+						// 將網路下載的資料根據UTF-8 轉換為Bytes
+						// 將Bytes轉換為ByteArrayInputStream方可以相同格式處理不同編碼的文件
+						thisStream = new ByteArrayInputStream(
+								result.getBytes("UTF-8"));
+					} catch (UnsupportedEncodingException e) {
+						ifSuccess = false;
+					}
+					// 文件建立工人對ByteArrayInputStream進行剖析
+					Document doc = db.parse(thisStream);
+					// 取得TagName為DirectionsResponse的節點列表
+					NodeList directionsResponse = doc
+							.getElementsByTagName("DirectiondResponse");
+					// 判斷TagName為DirectionsResponse的節點數量
+					if (directionsResponse.getLength() > 0) {
+						// ((Element)directionsResponse.item(n))取得第n個節點
+						// 取得第n個節點下TagName為route的節點列表
+						NodeList route = ((Element) directionsResponse.item(0))
+								.getElementsByTagName("route");
+						// 判斷route為DirectionsResponse的節點數量
+						if (route.getLength() > 0) {
+							NodeList leg = ((Element) route.item(0))
+									.getElementsByTagName("leg");
+							if (leg.getLength() > 0) {
+								NodeList step = ((Element) leg.item(0))
+										.getElementsByTagName("step");
+								if (step.getLength() > 0) {
+									LatLng lastLatLng = null;// 上一個經緯度
+									LatLng tempLatLng = null;// 暫時經緯度
+									for (int i = 0; i < step.getLength(); i++) {
+										NodeList start_location = ((Element) step
+												.item(i))
+												.getElementsByTagName("start_location");
+										NodeList startlats = ((Element) start_location
+												.item(0))
+												.getElementsByTagName("lat");
+										NodeList startlngs = ((Element) start_location
+												.item(0))
+												.getElementsByTagName("lng");
+
+										if (startlats.item(0).getNodeType() == Node.ELEMENT_NODE
+												&& startlngs.item(0)
+														.getNodeType() == Node.ELEMENT_NODE) {
+											tempLatLng = new LatLng(
+													Double.parseDouble(((Element) startlats
+															.item(0))
+															.getTextContent()),
+													Double.parseDouble(((Element) startlats
+															.item(0))
+															.getTextContent()));
+
+											if (lastLatLng == null) {
+												lastLatLng = tempLatLng;
+												getpoints.add(lastLatLng);
+											} else if (!lastLatLng
+													.equals(tempLatLng)) {
+												lastLatLng = tempLatLng;
+												getpoints.add(lastLatLng);
+											}
+										}
+										NodeList end_location = ((Element) step
+												.item(i))
+												.getElementsByTagName("end_location");
+										NodeList endlats = ((Element) end_location
+												.item(0))
+												.getElementsByTagName("lat");
+										NodeList endlngs = ((Element) end_location
+												.item(0))
+												.getElementsByTagName("lng");
+										if (endlats.item(0).getNodeType() == Node.ELEMENT_NODE
+												&& endlngs.item(0)
+														.getNodeType() == Node.ELEMENT_NODE) {
+											tempLatLng = new LatLng(
+													Double.parseDouble(((Element) endlats
+															.item(0))
+															.getTextContent()),
+													Double.parseDouble(((Element) endlats
+															.item(0))
+															.getTextContent()));
+
+											if (lastLatLng == null) {
+												lastLatLng = tempLatLng;
+												getpoints.add(lastLatLng);
+											} else if (!lastLatLng
+													.equals(tempLatLng)) {
+												lastLatLng = tempLatLng;
+												getpoints.add(lastLatLng);
+											}
+										}
+									}
+
+								}
+							}
+						}
+					}
+				} catch (ParserConfigurationException e) {
+					ifSuccess = false;
+				}catch(SAXException e){
+					ifSuccess=false;
+				}catch(IOException e){
+					ifSuccess=false;
+				}
+				if(ifSuccess){
+					//線條設定物件
+					PolylineOptions polylineOptions = new PolylineOptions();
+					for(LatLng point2:getpoints){
+						polylineOptions.add(point2);
+					}
+					//設定線條的寬度顏色
+					polylineOptions.width(10);
+					polylineOptions.color(Color.RED);
+					
+					//加入線條到地圖
+					polyline = map.addPolyline(polylineOptions);
+				}
+			}
 		}
 	}
 }
